@@ -3,7 +3,6 @@ from typing import Dict, Any
 from src.core.metadata_types import FileMetadata
 from src.utils.file_utils import format_file_size
 
-
 class ConsoleFormatter:
     @staticmethod
     def format(metadata: FileMetadata) -> str:
