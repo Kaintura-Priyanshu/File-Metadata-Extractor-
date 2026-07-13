@@ -2,141 +2,110 @@ from pathlib import Path
 from typing import Tuple, Dict, Any, Optional
 
 from mutagen import File as MutagenFile
-from mutagen.mp3 import MP3
-from mutagen.flac import FLAC
-from mutagen.oggvorbis import OggVorbis
-from mutagen.wave import WAVE
-from mutagen.aac import AAC
-from mutagen.mp4 import MP4
 
 from src.parsers.base_parser import BaseParser
 from src.core.metadata_types import AudioMetadata
 
 
 class AudioParser(BaseParser):
+    """Extract technical and tag metadata from audio files via mutagen."""
+
+    # Maps tag keys from various container formats (ID3, Vorbis comments,
+    # MP4 atoms) onto our normalized AudioMetadata fields.
+    TAG_FIELD_MAP = {
+        'TPE1': 'artist', 'TPE2': 'artist', 'ARTIST': 'artist', '\xa9ART': 'artist',
+        'TALB': 'album', 'ALBUM': 'album', '\xa9alb': 'album',
+        'TCON': 'genre', 'GENRE': 'genre', '\xa9gen': 'genre',
+        'TRCK': 'track_number', 'TRACKNUMBER': 'track_number', 'trkn': 'track_number',
+        'TDRC': 'year', 'YEAR': 'year', 'DATE': 'year', '\xa9day': 'year',
+        'USLT::eng': 'lyrics', 'LYRICS': 'lyrics', '\xa9lyr': 'lyrics',
+    }
+
     def parse(self, file_path: Path) -> Tuple[Optional[AudioMetadata], Dict[str, Any]]:
         metadata = AudioMetadata()
-        raw_metadata = {}
-        
+        raw_metadata: Dict[str, Any] = {}
+
         try:
             audio = MutagenFile(file_path)
-            
-            if audio:
+
+            if audio is not None:
                 raw_metadata = self._extract_raw_metadata(audio)
                 self._apply_metadata(metadata, audio, raw_metadata)
-        
+
         except Exception as e:
             print(f"Error parsing audio metadata: {e}")
-        
+
         return metadata, raw_metadata
-    
+
     def _extract_raw_metadata(self, audio) -> Dict[str, Any]:
-        raw_metadata = {}
-        
+        raw_metadata: Dict[str, Any] = {}
+
         try:
-            if hasattr(audio, 'info'):
-                info = audio.info
+            info = getattr(audio, 'info', None)
+            if info is not None:
                 for attr in dir(info):
-                    if not attr.startswith('_'):
-                        try:
-                            value = getattr(info, attr)
-                            if not callable(value):
-                                raw_metadata[attr] = value
-                        except (AttributeError, TypeError):
-                            pass
-            
-            if hasattr(audio, 'tags'):
-                tags = audio.tags
-                if tags:
-                    for key in tags.keys():
-                        try:
-                            raw_metadata[key] = tags.get(key, [None])[0]
-                        except (KeyError, IndexError):
-                            pass
-        
+                    if attr.startswith('_'):
+                        continue
+                    try:
+                        value = getattr(info, attr)
+                        if not callable(value):
+                            raw_metadata[attr] = value
+                    except (AttributeError, TypeError):
+                        pass
+
+            tags = getattr(audio, 'tags', None)
+            if tags:
+                for key in tags.keys():
+                    try:
+                        value = tags[key]
+                        if isinstance(value, list) and value:
+                            value = value[0]
+                        raw_metadata[str(key)] = value
+                    except (KeyError, IndexError):
+                        pass
+
         except Exception as e:
             print(f"Error extracting raw audio data: {e}")
-        
+
         return raw_metadata
-    
+
     def _apply_metadata(self, metadata: AudioMetadata, audio, raw_metadata: Dict) -> None:
-        if hasattr(audio, 'info'):
-            info = audio.info
-            
+        info = getattr(audio, 'info', None)
+        if info is not None:
             if hasattr(info, 'length'):
-                metadata.duration_seconds = info.length
-            
+                metadata.duration_seconds = self._convert_to_float(info.length)
             if hasattr(info, 'bitrate'):
-                metadata.bit_rate = info.bitrate
-            
+                metadata.bit_rate = self._convert_to_int(info.bitrate)
             if hasattr(info, 'sample_rate'):
-                metadata.sample_rate = info.sample_rate
-            
+                metadata.sample_rate = self._convert_to_int(info.sample_rate)
             if hasattr(info, 'channels'):
-                metadata.channels = info.channels
-            
+                metadata.channels = self._convert_to_int(info.channels)
             if hasattr(info, 'bits_per_sample'):
-                metadata.bit_depth = info.bits_per_sample
-            
+                metadata.bit_depth = self._convert_to_int(info.bits_per_sample)
             if hasattr(info, 'codec'):
-                metadata.codec = info.codec
-        
-        tags = {}
-        if hasattr(audio, 'tags') and audio.tags:
-            tags = audio.tags
-        
-        tag_fields = {
-            'TPE1': 'artist',
-            'TPE2': 'artist',
-            'ARTIST': 'artist',
-            '©ART': 'artist',
-            
-            'TALB': 'album',
-            'ALBUM': 'album',
-            '©alb': 'album',
-            
-            'TCON': 'genre',
-            'GENRE': 'genre',
-            '©gen': 'genre',
-            
-            'TRCK': 'track_number',
-            'TRACKNUMBER': 'track_number',
-            '©trk': 'track_number',
-            
-            'TDRC': 'year',
-            'YEAR': 'year',
-            '©day': 'year',
-            
-            'USLT': 'lyrics',
-            'LYRICS': 'lyrics',
-        }
-        
-        for tag_key, meta_key in tag_fields.items():
-            if tag_key in tags:
-                value = tags[tag_key]
-                if isinstance(value, list) and value:
-                    value = value[0]
-                
-                if meta_key == 'track_number':
-                    track_value = self._parse_track_number(str(value))
-                    if track_value is not None:
-                        setattr(metadata, meta_key, track_value)
-                elif meta_key == 'year':
-                    year_value = self._parse_year(str(value))
-                    if year_value is not None:
-                        setattr(metadata, meta_key, year_value)
-                else:
-                    setattr(metadata, meta_key, str(value))
-        
-        if hasattr(audio, 'filename'):
-            filename = str(audio.filename)
-            if 'lyrics' in filename.lower():
-                try:
-                    with open(filename, 'r', encoding='utf-8') as f:
-                        metadata.lyrics = f.read()
-                except Exception:
-                    pass
-    
+                metadata.codec = str(info.codec)
+
+        tags = getattr(audio, 'tags', None) or {}
+
+        for tag_key, meta_key in self.TAG_FIELD_MAP.items():
+            if tag_key not in tags:
+                continue
+
+            value = tags[tag_key]
+            if isinstance(value, list) and value:
+                value = value[0]
+
+            if meta_key == 'track_number':
+                track_value = self._parse_track_number(str(value))
+                if track_value is not None:
+                    metadata.track_number = track_value
+            elif meta_key == 'year':
+                year_value = self._parse_year(str(value))
+                if year_value is not None:
+                    metadata.year = year_value
+            else:
+                setattr(metadata, meta_key, str(value))
+
     def _parse_track_number(self, value: str) -> Optional[int]:
         try:
             if '/' in value:
@@ -144,11 +113,12 @@ class AudioParser(BaseParser):
             return int(value)
         except (ValueError, TypeError):
             return None
-    
+
     def _parse_year(self, value: str) -> Optional[int]:
         try:
-            if len(value) >= 4:
-                return int(value[:4])
+            digits = value[:4]
+            if len(digits) >= 4 and digits.isdigit():
+                return int(digits)
             return int(value)
         except (ValueError, TypeError):
             return None
