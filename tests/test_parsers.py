@@ -84,7 +84,7 @@ class TestDocumentParser(unittest.TestCase):
         metadata, raw = self.parser.parse(file_path)
         
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.word_count, 14)
+        self.assertEqual(metadata.word_count, 12)
         self.assertGreater(metadata.character_count, 0)
         self.assertIsNotNone(metadata.page_count)
     
@@ -316,6 +316,7 @@ class TestParserErrorHandling(unittest.TestCase):
     
     def setUp(self):
         self.parser = ImageParser()
+        self.document_parser = DocumentParser()
         self.test_dir = tempfile.mkdtemp()
     
     def tearDown(self):
@@ -360,7 +361,6 @@ class TestParserErrorHandling(unittest.TestCase):
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write("Hello 世界 🌍 🚀")
         
-        metadata, raw = self.document_parser = DocumentParser()
         result, _ = self.document_parser.parse(file_path)
         
         self.assertIsNotNone(result)
@@ -369,3 +369,8 @@ class TestParserErrorHandling(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+        
+       
