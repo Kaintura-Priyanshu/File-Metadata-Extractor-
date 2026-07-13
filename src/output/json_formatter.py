@@ -1,30 +1,31 @@
 import json
-from datetime import datetime
 from typing import Dict, Any
 
 from src.core.metadata_types import FileMetadata
+from src.utils.file_utils import format_file_size
 
 
 class JSONFormatter:
+    """Serialize FileMetadata into a JSON string."""
+
     @staticmethod
     def format(metadata: FileMetadata, pretty: bool = True) -> str:
         data = JSONFormatter._to_dict(metadata)
-        
+
         if pretty:
             return json.dumps(data, indent=2, default=str, ensure_ascii=False)
-        else:
-            return json.dumps(data, default=str, ensure_ascii=False)
-    
+        return json.dumps(data, default=str, ensure_ascii=False)
+
     @staticmethod
     def _to_dict(metadata: FileMetadata) -> Dict[str, Any]:
-        result = {}
-        
+        result: Dict[str, Any] = {}
+
         if metadata.basic:
             result['basic'] = {
                 'file_name': metadata.basic.file_name,
                 'file_path': metadata.basic.file_path,
                 'file_size': metadata.basic.file_size,
-                'file_size_formatted': metadata.basic.file_size,
+                'file_size_formatted': format_file_size(metadata.basic.file_size),
                 'file_extension': metadata.basic.file_extension,
                 'mime_type': metadata.basic.mime_type,
                 'file_category': metadata.basic.file_category.value if metadata.basic.file_category else None,
@@ -32,7 +33,7 @@ class JSONFormatter:
                 'modification_time': metadata.basic.modification_time,
                 'access_time': metadata.basic.access_time
             }
-        
+
         if metadata.image:
             result['image'] = {
                 'width': metadata.image.width,
@@ -51,7 +52,7 @@ class JSONFormatter:
                 'gps_longitude': metadata.image.gps_longitude,
                 'gps_altitude': metadata.image.gps_altitude
             }
-        
+
         if metadata.document:
             result['document'] = {
                 'author': metadata.document.author,
@@ -66,7 +67,7 @@ class JSONFormatter:
                 'application_name': metadata.document.application_name,
                 'application_version': metadata.document.application_version
             }
-        
+
         if metadata.audio:
             result['audio'] = {
                 'duration_seconds': metadata.audio.duration_seconds,
@@ -82,7 +83,7 @@ class JSONFormatter:
                 'year': metadata.audio.year,
                 'lyrics': metadata.audio.lyrics
             }
-        
+
         if metadata.video:
             result['video'] = {
                 'duration_seconds': metadata.video.duration_seconds,
@@ -97,8 +98,8 @@ class JSONFormatter:
                 'audio_channels': metadata.video.audio_channels,
                 'audio_sample_rate': metadata.video.audio_sample_rate
             }
-        
+
         if metadata.raw_metadata:
             result['raw_metadata'] = metadata.raw_metadata
-        
+
         return result
